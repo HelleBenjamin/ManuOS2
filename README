@@ -28,7 +28,12 @@ Prerequisites
 Note: You'll get a FAT12 initialization error if you try to boot the image with qemu. 
 To make it work, please see (https://wiki.osdev.org/GRUB), section "Disk image instructions". I've tested it and it works.
 
+Third-party libraries
+=====================
+
+- FatFs (https://elm-chan.org/fsw/ff/)
+
 License
 =======
 
-ManuOS is distributed under the GPL-2.0-or-later license.
+ManuOS is distributed under the GPL v2 license.
