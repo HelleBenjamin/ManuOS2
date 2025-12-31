@@ -54,19 +54,26 @@ build_kernel: $(ALL_OBJS)
 	$(AS) $(AS_FLAGS) -o $(BUILD_DIR)/boot.o $(MANUOS_SOURCE_DIR)/kernel/boot.asm
 	$(LD) $(LD_FLAGS) $(BUILD_DIR)/boot.o $(ALL_OBJS) -o $(BUILD_DIR)/manux.bin
 
-build_image-new:
-	dd if=/dev/zero of=disk.img bs=512 count=131072
-
-build_image-new-notworking:
-	mkdir -p image/boot/grub
-	cp $(BUILD_DIR)/manux.elf image/boot/manux.elf
-	cp grub.cfg image/boot/grub/grub.cfg
-	dd if=/dev/zero of=manuos.img bs=512 count=131072
-	mkfs.fat -F 12 -n "MANUOS" manuos.img
-	grub2-install --root-directory=image --no-floppy -d /usr/share/grub2/i386-pc manuos.img
-	mcopy -i manuos.img -s image/boot/* ::/boot/
-
 build_image:
+# Basically the same as in the OSDEV guide, run this as sudo
+	dd if=/dev/zero of=disk.img bs=512 count=131072
+	echo -e "n\np\n1\n\n\na\nw\n" | sudo fdisk disk.img
+	sudo losetup /dev/loop0 disk.img
+	sudo losetup /dev/loop1 disk.img -o 1048576
+	sudo mkdosfs -F12 -f 2 /dev/loop1
+	sudo mount /dev/loop1 /mnt
+	sync
+	sudo grub2-install --root-directory=/mnt --no-floppy --modules="normal part_msdos ext2 multiboot" /dev/loop0 -d /usr/share/grub2/i386-pc
+	sudo cp $(BUILD_DIR)/manux.bin /mnt/boot/manux.bin
+	sudo cp grub.cfg /mnt/boot/grub2/grub.cfg
+	sudo cp testi.txt /mnt
+	sync
+	sudo umount /mnt
+	sudo losetup -D
+
+
+build_image-old:
+# Not recommended
 	mkdir -p image/boot/grub
 	cp $(BUILD_DIR)/manux.bin image/boot/manux.bin
 	cp grub.cfg image/boot/grub/grub.cfg
@@ -77,10 +84,10 @@ build_manuos: build_kernel build_shell
 
 
 qemu:
-	qemu-system-i386 -m 32M -hda manuos.img
+	qemu-system-i386 -m 32M -hda disk.img
 
 qemu-debug:
-	qemu-system-i386 -m 32M -hda manuos.img -s -S
+	qemu-system-i386 -m 32M -hda disk.img -s -S
 
 disasm-kernel:
 	objdump -d $(BUILD_DIR)/manux.bin > disasm-kernel.asm

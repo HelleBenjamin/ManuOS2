@@ -20,13 +20,13 @@ Prerequisites
 - gcc
 - nasm
 - grub
+- mtools and dosfstools
+- dd
 - (optional) qemu
 
 1. Build the kernel with `make build_kernel`
-2. Build the image with `make build_image`
+2. Build the image with `make build_image`, this will build a bootable FAT12 image
 
-Note: You'll get a FAT12 initialization error if you try to boot the image with qemu. 
-To make it work, please see (https://wiki.osdev.org/GRUB), section "Disk image instructions". I've tested it and it works.
 
 Third-party libraries
 =====================
