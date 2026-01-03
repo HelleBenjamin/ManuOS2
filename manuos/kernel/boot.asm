@@ -32,10 +32,22 @@ _start:
 	ljmp $0x08, $call_kernel
 
 call_kernel:
-
-	# Set the stack
+	# Set temporal stack
 	mov $stack_top, %esp
-	call kernel_main
+
+	# Enable paging
+	.extern page_dir
+	.extern page_init
+	call page_init
+
+	movl $page_dir, %eax
+	movl %eax, %cr3
+
+	movl %cr0, %eax
+	orl $0x80000000, %eax
+	movl %eax, %cr0
+
+	jmp kernel_main
 
 	hlt
 

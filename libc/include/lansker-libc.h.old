@@ -42,7 +42,6 @@ void puts(char *s);
 void puth(uint32_t n);
 void putdec(uint8_t n);
 void putlong(unsigned long n);
-void printk(char *s);
 char getc(void);
 char *gets(char *s); /* Unsafe */
 char *getsn(char *s, size_t n);

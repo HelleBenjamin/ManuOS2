@@ -7,5 +7,6 @@
 _start:
   # setup stack, fds, etc..
   call main
-
-  # How we exit?
+  movl $0, %eax
+  int $0x80
+  # TODO: exit 

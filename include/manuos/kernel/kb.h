@@ -5,8 +5,10 @@
 #define KB_CMD_PORT  0x64
 #define KB_BUF_SIZE   64
 
-int kb_init(void);
+int  kb_init(void);
 void kb_handler(void);
 char getchar(void);
+char getchar_nonblock(void);
+int  kbhit(void);
 
 #endif

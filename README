@@ -5,11 +5,16 @@ Successor to the original ManuOS and Lanskern(My first attempt making a kernel).
 
 What is ManuOS?
 ===============
-ManuOS is a hobby operating system that runs on a x86 PC. It's written in C and uses a small amount of assembly.
+ManuOS is a hobby operating system that runs on a x86 PC. It's written in C and uses a small amount of assembly. 
+It uses Lansker-libc(custom written for the OS) as the C library.
 
 How to use ManuOS?
 ==================
 You need to install grub to a fat12 partitioned disk, copy the kernel and grub.cgf to it and boot it.
+
+The goal?
+=========
+Learn how to write an operating system. And also try getting some actual software working.
 
 How to build ManuOS?
 ====================
@@ -24,8 +29,11 @@ Prerequisites
 - dd
 - (optional) qemu
 
-1. Build the kernel with `make build_kernel`
-2. Build the image with `make build_image`, this will build a bootable FAT12 image
+1. Build the libc with `make libc`
+2. Build the kernel with `make kernel`
+3. Build the userland with `make userland`
+4. Build the image with `sudo make image`, this will build a bootable FAT12 image
+You can also use `sudo make image-update` to only update the OS files(useful for development)
 
 
 Third-party libraries

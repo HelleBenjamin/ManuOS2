@@ -88,6 +88,7 @@ void kb_handler(void) {
   unsigned char scancode = inb(KB_DATA_PORT);
   char c = 0;
 
+  /* TODO: Fix shifted keys*/
   /* Check the key is shift or not */
   if (scancode == 42 || scancode == 54) {
     shift = scancode;
@@ -109,6 +110,17 @@ void kb_handler(void) {
 }
 
 char getchar() {
+  while (kb_buf_count == 0) {
+    /* Wait until a key is pressed*/
+  }
+
+  char c = kb_buf[kb_buf_tail];
+  kb_buf_tail = (kb_buf_tail + 1) % KB_BUF_SIZE;
+  kb_buf_count--;
+  return c;
+}
+
+char getchar_nonblock() {
   if (kb_buf_count == 0) {
     return 0;
   }

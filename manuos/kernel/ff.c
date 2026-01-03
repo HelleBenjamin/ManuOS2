@@ -18,8 +18,7 @@
 /
 /----------------------------------------------------------------------------*/
 
-
-#include "../../libc/lansker-libc.h"
+#include <string.h>
 #include "../../include/manuos/kernel/ff.h"			/* Basic definitions and declarations of API */
 #include "../../include/manuos/kernel/diskio.h"		/* Declarations of MAI */
 

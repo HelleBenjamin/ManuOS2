@@ -1,40 +1,12 @@
 .section .text
   .code32
   .globl syscall_dispatch
-  .globl default_isr
-  .globl default_isr_code
-  .globl default_irq
-  .globl kb_isr
-
-# Move these interrupt handlers to their own file
-
-  .extern kb_handler
-kb_isr:
-  pushal
-  call kb_handler
-  movb $0x20, %al
-  outb %al, $0x20
-  popal
-  iret
-
-default_isr:
-  iret
-
-default_isr_code:
-  addl $4, %esp
-  iret
-
-default_irq:
-  movb $0x20, %al
-  outb %al, $0x20
-  iret
 
 syscall_dispatch:
 
   pushal
   movl %eax, %edi
-  shll $1, %edi
-  shll $1, %edi
+  shll $2, %edi
   addl $syscall_table, %edi
   call *(%edi)
   
@@ -71,7 +43,7 @@ swrite:
   pushl %ecx
   pushl %ebx
   pushl %edx
-  call sys_write
+  call sys_write  # Call the C function
   addl $12, %esp
   ret
 

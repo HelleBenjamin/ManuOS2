@@ -1,19 +1,17 @@
 #include "lansker-libc.h"
-#include "../include/manuos/kernel/kernel.h"
-#include "../include/manuos/kernel/video.h"
+#include "../include/manuos/kernel/syscall.h"
+#include "../include/unistd.h"
 /* IO */
 
 void putc(char c) {
-  printc(c);
+  syscall(SYS_WRITE, (int)&c, 1, STDOUT_FILENO);
 }
 
 void puts(char *s) {
-  prints(s);
+  int len = strlen(s);
+  syscall(SYS_WRITE, (int)s, len, STDOUT_FILENO);
 }
 
-void printk(char *s) {
-  prints(s);
-}
 
 void puth(uint32_t n) { 
   volatile char started = 0; /* Compiler optimizations fucks up this one, use volatile here */
@@ -44,36 +42,6 @@ void putlong(unsigned long n) {
   }
 }
 
-short strcmp(const char *str1, const char *str2) { // string compare
-    while (*str1 && *str1 == *str2) {
-        str1++;
-        str2++;
-    }
-    return *str1 - *str2;
-}
-
-void strcpy(char *dest, const char *src) {
-    while ((*dest = *src)) {
-        dest++;
-        src++;
-    }
-    *dest = '\0';
-}
-
-void strcat(char *dest, const char *src) {
-    while (*dest) {
-        dest++;
-    }
-    strcpy(dest, src);
-}
-
-short strlen(const char *str) {
-    unsigned int i = 0;
-    while (str[i]) {
-        i++;
-    }
-    return i;
-}
 
 short startsWith(const char *str1, const char *str2) {
     while (*str2 && *str1 == *str2) {

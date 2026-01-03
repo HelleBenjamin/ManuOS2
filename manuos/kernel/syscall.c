@@ -2,7 +2,7 @@
 #include "../../include/manuos/kernel/syscall.h"
 #include "../../include/manuos/kernel/video.h"
 #include "../../include/manuos/kernel/kb.h"
-#include "../../include/unistd.h"
+
 
 
 int sys_write(uint8_t fd, char *buf, uint32_t len) {
@@ -12,7 +12,7 @@ int sys_write(uint8_t fd, char *buf, uint32_t len) {
     ebx = buf
   */
 
-  if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+  if (fd == 1 || fd == 2) {
     printslen(buf, len);
     return len;
   } else { /* Add other logic here */
@@ -27,11 +27,10 @@ int sys_read(uint8_t fd, char *buf, uint32_t len) {
     ebx = buf
   */
   
-  if (fd == STDIN_FILENO) {
+  if (fd == 0) {
     int i = 0;
-    asm volatile("sti");
+    asm volatile("sti"); /* Enable interrupts so keyboard input works*/
     while (i < len) {
-      asm volatile("hlt"); /* Wait for a key to be pressed */
       char c = getchar();
       if (c != 0) {
         printc(c); /* Echo it */

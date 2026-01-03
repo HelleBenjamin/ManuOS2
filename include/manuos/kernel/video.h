@@ -3,23 +3,33 @@
 
 /* Video driver */
 
-#define BLACK 0x00
-#define BLUE 0x01
-#define GREEN 0x02
-#define CYAN 0x03
-#define RED 0x04
-#define MAGENTA 0x05
-#define YELLOW 0x06
-#define WHITE 0x07
+#include <stdint.h>
 
-#define BLACK_BG 0x100
-#define BLUE_BG 0x10
-#define GREEN_BG 0x20
-#define CYAN_BG 0x30
-#define RED_BG 0x40
-#define MAGENTA_BG 0x50
-#define YELLOW_BG 0x60
-#define WHITE_BG 0x70
+#define VGA_WIDTH     80
+#define VGA_HEIGHT    25
+
+#define VGA_PORT_CTRL 0x3D4
+#define VGA_PORT_DATA 0x3D5
+
+enum {
+  COLOR_BLACK = 0,
+  COLOR_BLUE,
+  COLOR_GREEN,
+  COLOR_CYAN,
+  COLOR_RED,
+  COLOR_MAGENTA,
+  COLOR_YELLOW,
+  COLOR_LIGHT_GRAY,
+  COLOR_GRAY = 8,
+  COLOR_LIGHT_BLUE,
+  COLOR_LIGHT_GREEN,
+  COLOR_LIGHT_CYAN,
+  COLOR_LIGHT_RED,
+  COLOR_LIGHT_MAGENTA,
+  COLOR_LIGHT_YELLOW,
+  COLOR_WHITE
+};
+
 
 void video_init();
 void clear(void);
@@ -27,14 +37,21 @@ void printc(char c);
 void prints(char *str);
 void printslen(char *str, int len);
 void printi(int i);
-void video_test();
-void video_test2();
-void ccolor(unsigned int color);
+void puth(uint32_t n);
+void putdec(uint8_t n);
+void putlong(unsigned long n);
+void set_color(uint8_t fg, uint8_t bg);
 void put_pixel(int x, int y, unsigned int color);
 unsigned int get_pixel(int x, int y);
 void newline(void);
 void update_cursor();
 void backspace(void);
-void background(unsigned int color);
+
+/*New functions */
+int get_pos(int x, int y);
+int get_row(int pos);
+int get_cursor(void);
+void set_cursor(int pos);
+int scroll(void);
 
 #endif

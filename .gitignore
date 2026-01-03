@@ -3,3 +3,4 @@ image/
 disasm-kernel.asm
 disk.img
 manuos.img
+crt0.o

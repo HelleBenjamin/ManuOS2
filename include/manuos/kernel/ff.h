@@ -38,7 +38,7 @@ extern "C" {
 
 
 #define FF_INTDEF 2
-#include "../../../libc/lansker-libc.h"
+#include <stdint.h>
 typedef unsigned int	UINT;	/* int must be 16-bit or 32-bit */
 typedef unsigned char	BYTE;	/* char must be 8-bit */
 typedef uint16_t		WORD;	/* 16-bit unsigned */

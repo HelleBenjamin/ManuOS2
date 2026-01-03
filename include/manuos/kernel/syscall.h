@@ -1,7 +1,7 @@
 #ifndef SYSCALL_H
 #define SYSCALL_H
 
-#include "../../../libc/lansker-libc.h"
+#include <stdint.h>
 
 #define SYS_EXIT      0
 #define SYS_WRITE     1
@@ -11,6 +11,7 @@
 #define SYS_EXEC      5
 #define SYS_FORK      6
 
+/* Use these if possible*/
 int sys_write(uint8_t fd, char *buf, uint32_t len);
 int sys_read(uint8_t fd, char *buf, uint32_t len);
 

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later
- * Copyright (c) 2025 Benjamin Helle
+ * Copyright (c) 2025-2026 Benjamin Helle
  */
 
 #include "../../include/manuos/kernel/kernel.h"
@@ -7,6 +7,8 @@
 #include "../../include/manuos/kernel/video.h"
 #include "../../include/manuos/kernel/kb.h"
 #include "../../include/manuos/kernel/syscall.h"
+#include <stdint.h>
+#include <string.h>
 
 
 extern void syscall_dispatch(void);
@@ -14,17 +16,27 @@ extern void syscall_dispatch(void);
 /* Our filesystem, FAT12 */
 static FATFS fs;
 
+/* IDT stuff */
 struct isr_t idt[256];    /* IDT entries */
 struct idt_ptr_t idt_ptr; /* IDT pointer */
 
+/* Page stuff */
+uint32_t page_dir[1024] __attribute__((aligned(4096)));
+uint32_t first_page[1024] __attribute__((aligned(4096)));
+
 extern void test_syscall(void);
 extern void kb_isr(void);
+extern void dbz_handler(void);
+extern void pf_handler(void);
+
+/* All kernel related stuff should use printk instead of puts */
 
 /*kernel init stuff*/
 void kernel_main(void) {
+
   video_init();
 
-  char kernel_msg[32] = "Manux Kernel ";
+  char kernel_msg[32] = " Manux Kernel ";
   strcat(kernel_msg, KERNEL_VER_STR);
   strcat(kernel_msg, "\n");
   printk(kernel_msg);
@@ -32,15 +44,18 @@ void kernel_main(void) {
   idt_init();
   pic_remap();
 
-  /* Set main syscall handler*/
+  /* Set handlers */
   set_idt_gate(0x80, syscall_dispatch, GDT_SELECTOR, 0x8E);
   set_idt_gate(0x21, kb_isr, GDT_SELECTOR, 0x8E);
+  /* Exception handlers */
+  set_idt_gate(0x00, dbz_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x0E, pf_handler, GDT_SELECTOR, 0x8E);
 
   asm volatile("sti");
   printk(" Set interrupt handlers\n");
 
   /* Test syscall */
-  test_syscall();
+  //test_syscall();
 
   FRESULT res = f_mount(&fs, "/", 1);
 
@@ -54,7 +69,7 @@ void kernel_main(void) {
   //fs_list_root();
 
   /*Test read file, if it doesn't exist please create it :)*/
-  char filebuf[32] = {0};
+  /*char filebuf[32] = {0};
   FIL f = {0};
   res = f_open(&f, "testi.txt", FA_READ);
   putlong(res);
@@ -69,7 +84,7 @@ void kernel_main(void) {
   putlong(res);
   newline();
 
-  puts("Read len: ");
+  printk("Read len: ");
   putlong(len);
   newline();
 
@@ -80,19 +95,70 @@ void kernel_main(void) {
 
   f_close(&f);
 
-  prints(filebuf);
+  prints(filebuf);*/
+
+  /* Launch shell*/
+  FIL shell = {0};
+  res = f_open(&shell, "/bin/shell.bin", FA_READ);
+
+  if(res != FR_OK) {
+    printk(" Failed to open shell.bin\n");
+    kernel_panic();
+  }
+
+  uint8_t dest[1024] = {0};
+  size_t src_len;
+  res = f_read(&shell, dest, 1024, &src_len);
+
+  if (res != FR_OK) {
+    printk(" Failed to read shell.bin\n");
+    kernel_panic();
+  }
+
+  f_close(&shell);
+
+  /* TODO: Make the shell run in usermode(ring 3)*/
+  entry_func_t shell_entry = (entry_func_t)dest;
+  shell_entry();
+
 
   kernel_panic(); /* kernel main should never return */
 }
 
+void page_init() {
+
+  for (int i = 1; i < 1024; i++) {
+    page_dir[i] = 2; /* No page*/
+  }
+
+  for (int i = 0; i < 1024; i++) {
+    first_page[i] = (i * 0x1000) | 3;
+  }
+
+  /* Set the first page*/
+  page_dir[0] = ((uint32_t)first_page) | 3;
+
+
+  /* Set the kernel page*/
+  page_dir[KERNEL_VIRT >> 22] = (uint32_t)first_page | PAGE_PRESENT | PAGE_RW;
+
+  /* Set the video page*/
+  page_dir[VGA_VIRT >> 22] = (uint32_t)first_page | PAGE_PRESENT | PAGE_RW;
+}
+
+
+void printk(char *s) {
+  prints(s); /* Talks directly to the video driver*/
+}
+
 void fs_list_root(void) {
-  puts("Listing root\n");
+  printk("Listing root\n");
   DIR dir;
   FILINFO fno;
   FRESULT res = f_opendir(&dir, "");
 
   if (res != FR_OK) {
-    puts("opendir failed with code ");
+    printk("opendir failed with code ");
     puth(res);
     return;
   }
@@ -103,9 +169,9 @@ void fs_list_root(void) {
 
     //printk("%s  %lu\n", fno.fname, (unsigned long)fno.fsize);
 
-    puts("Name: ");
-    puts((char*)fno.fname);
-    puts(" Size: ");
+    printk("Name: ");
+    printk((char*)fno.fname);
+    printk(" Size: ");
     putlong(fno.fsize);
     newline();
 
@@ -113,7 +179,7 @@ void fs_list_root(void) {
   }
 
   f_closedir(&dir);
-  puts("Done\n");
+  printk("Done\n");
 }
 
 /* Remap the pic,*/
@@ -167,27 +233,27 @@ void idt_init() {
 
   /* Set all IDT entries to default handler */
   for (int i = 0; i < 256; i++) {
-    set_idt_gate(i, default_isr, GDT_SELECTOR, 0x8E);
+    set_idt_gate(i, default_isr, GDT_SELECTOR, GATE_INTERRUPT);
   }
 
   /* Set all IRSs that use error code, pretty inefficient and ugly*/
-  set_idt_gate(0x08, default_isr_code, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x08, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
   for (int i = 0x0A; i < 0x0F; i++) {
-    set_idt_gate(i, default_isr_code, GDT_SELECTOR, 0x8E);
+    set_idt_gate(i, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
   }
-  set_idt_gate(0x11, default_isr_code, GDT_SELECTOR, 0x8E);
-  set_idt_gate(0x15, default_isr_code, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x11, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
+  set_idt_gate(0x15, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
 
   /* Set IQRs for the PIC*/
   for (int i = 0; i < 16; i++) {
-    set_idt_gate(i + 0x20, default_irq, GDT_SELECTOR, 0x8E);
+    set_idt_gate(i + 0x20, default_irq, GDT_SELECTOR, GATE_INTERRUPT);
   }
 
   /* Load the IDT */
   asm volatile("lidt %0" : : "m"(idt_ptr) : "memory");
-  puts(" IDT Loaded with base 0x");
+  printk(" IDT Loaded with base 0x");
   puth(idt_ptr.base);
-  puts(" and limit ");
+  printk(" and limit ");
   putlong(idt_ptr.limit);
   printk(" Done\n");
 }
@@ -203,7 +269,7 @@ void set_idt_gate(uint8_t vector, void* handler, uint16_t selector, uint8_t attr
 }
 
 void kernel_panic() {
-  puts("\nKERNEL PANIC!\n");
+  printk("\nKERNEL PANIC!\n");
   uint32_t eax, ecx, edx, ebx, esi, edi, esp, ebp, eip, es, ds, ss, cs;
   asm volatile(
     /* save general registers into memory operands (16-bit portion) */
@@ -243,31 +309,31 @@ void kernel_panic() {
     , "m"(esp), "m"(ebp), "m"(es), "m"(ds), "m"(ss), "m"(cs),"m"(eip)
     : "cc", "memory"
   );
-  puts("EAX: ");
+  printk("EAX: ");
   puth(eax);
-  puts(" EBX: ");
+  printk(" EBX: ");
   puth(ebx);
-  puts(" ECX: ");
+  printk(" ECX: ");
   puth(ecx);
-  puts(" EDX: ");
+  printk(" EDX: ");
   puth(edx);
-  puts(" ESI: ");
+  printk(" ESI: ");
   puth(esi);
-  puts(" EDI: ");
+  printk(" EDI: ");
   puth(edi);
-  puts(" ESP: ");
+  printk(" ESP: ");
   puth(esp);
-  puts(" EBP: ");
+  printk(" EBP: ");
   puth(ebp);
-  puts("\nEIP: ");
+  printk("\nEIP: ");
   puth(eip);
-  puts(" ES: ");
+  printk(" ES: ");
   puth(es);
-  puts(" DS: ");
+  printk(" DS: ");
   puth(ds);
-  puts(" SS: ");
+  printk(" SS: ");
   puth(ss);
-  puts(" CS: ");
+  printk(" CS: ");
   puth(cs);
   while (1); /* hang */
 }
