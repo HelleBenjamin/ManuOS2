@@ -1,7 +1,7 @@
 #include "../../include/manuos/kernel/video.h"
 #include "../../include/manuos/kernel/kernel.h"
 
-char *vmp = (char *)VGA_VIRT;
+char *vmp = (char *)VGA_PHYS; /* Set initially to physical address */
 static unsigned int current_fg;
 static unsigned int current_bg;
 

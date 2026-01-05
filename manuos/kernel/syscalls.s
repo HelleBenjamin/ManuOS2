@@ -10,6 +10,8 @@ syscall_dispatch:
   addl $syscall_table, %edi
   call *(%edi)
   
+  # TODO: Error handling, usermode
+
   popl %edi
   popl %esi
   popl %ebp

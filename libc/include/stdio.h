@@ -10,5 +10,7 @@
 extern int puts(const char *str);
 extern int getchar(void);
 extern int gets(char *str);
+extern int printf(const char *format, ...);
+extern int putchar(int c);
 
 #endif

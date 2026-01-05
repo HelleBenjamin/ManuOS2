@@ -21,38 +21,54 @@ struct isr_t idt[256];    /* IDT entries */
 struct idt_ptr_t idt_ptr; /* IDT pointer */
 
 /* Page stuff */
-uint32_t page_dir[1024] __attribute__((aligned(4096)));
-uint32_t first_page[1024] __attribute__((aligned(4096)));
+uint32_t page_dir[1024]         __attribute__((aligned(4096)));
+uint32_t first_page_table[1024] __attribute__((aligned(4096)));
+uint32_t *page_tables[1024]     __attribute__((aligned(4096)));
+
+static uint8_t phys_mem_bitmap[MAX_PAGES / 8];
+static uint32_t pages_num;
+static uint32_t free_pages_num;
+
+static uint32_t kheap = KERNEL_HEAP;
+
+/* Provided by the linker :)*/
+extern uint32_t _kend;
+extern uint32_t _kstart;
+
+static inline void set_bit(uint32_t i)   { phys_mem_bitmap[i/8] |=  (1 << (i%8)); }
+static inline void clear_bit(uint32_t i) { phys_mem_bitmap[i/8] &= ~(1 << (i%8)); }
+static inline int  test_bit(uint32_t i)  { return phys_mem_bitmap[i/8] & (1 << (i%8)); }
+
 
 extern void test_syscall(void);
 extern void kb_isr(void);
 extern void dbz_handler(void);
+extern void of_handler(void);
+extern void illop_handler(void);
+extern void df_handler(void);
+extern void gp_handler(void);
 extern void pf_handler(void);
 
 /* All kernel related stuff should use printk instead of puts */
 
 /*kernel init stuff*/
-void kernel_main(void) {
+void kernel_main() {
+  dump_pinfo();
 
-  video_init();
+  /* Map kernel heap*/
+  map_page(KERNEL_HEAP, alloc_page(), 3);
 
-  char kernel_msg[32] = " Manux Kernel ";
-  strcat(kernel_msg, KERNEL_VER_STR);
-  strcat(kernel_msg, "\n");
-  printk(kernel_msg);
+  /* Test heap */
+  uint32_t *test = kmalloc(4);
+  *test = 0xDEADBEEF; /* I know that's funny*/
+  if (*test != 0xDEADBEEF) {
+    printk(" kmalloc test failed\n");
+    kernel_panic();
+  }
+  printk(" kmalloc test passed\n");
+  kfree(test);
 
-  idt_init();
-  pic_remap();
-
-  /* Set handlers */
-  set_idt_gate(0x80, syscall_dispatch, GDT_SELECTOR, 0x8E);
-  set_idt_gate(0x21, kb_isr, GDT_SELECTOR, 0x8E);
-  /* Exception handlers */
-  set_idt_gate(0x00, dbz_handler, GDT_SELECTOR, 0x8E);
-  set_idt_gate(0x0E, pf_handler, GDT_SELECTOR, 0x8E);
-
-  asm volatile("sti");
-  printk(" Set interrupt handlers\n");
+  asm volatile("sti"); /* Interrupts on after tests passed*/
 
   /* Test syscall */
   //test_syscall();
@@ -66,37 +82,6 @@ void kernel_main(void) {
   printk(" FAT12 initialized\n");
   printk(" Welcome to MANUOS2\n");
 
-  //fs_list_root();
-
-  /*Test read file, if it doesn't exist please create it :)*/
-  /*char filebuf[32] = {0};
-  FIL f = {0};
-  res = f_open(&f, "testi.txt", FA_READ);
-  putlong(res);
-  newline();
-  if(res != FR_OK) {
-    printk(" Failed to open TESTI.TXT\n");
-    kernel_panic();
-  }
-
-  UINT len;
-  res = f_read(&f, filebuf, 32, &len);
-  putlong(res);
-  newline();
-
-  printk("Read len: ");
-  putlong(len);
-  newline();
-
-  if(res != FR_OK) {
-    printk(" Failed to read TESTI.TXT\n");
-    kernel_panic();
-  }
-
-  f_close(&f);
-
-  prints(filebuf);*/
-
   /* Launch shell*/
   FIL shell = {0};
   res = f_open(&shell, "/bin/shell.bin", FA_READ);
@@ -106,9 +91,11 @@ void kernel_main(void) {
     kernel_panic();
   }
 
-  uint8_t dest[1024] = {0};
-  size_t src_len;
-  res = f_read(&shell, dest, 1024, &src_len);
+  size_t src_len = f_size(&shell);
+
+  uint8_t* dest = kmalloc(src_len);
+  //uint8_t dest[32*1024];
+  res = f_read(&shell, dest, 2048, NULL);
 
   if (res != FR_OK) {
     printk(" Failed to read shell.bin\n");
@@ -125,26 +112,190 @@ void kernel_main(void) {
   kernel_panic(); /* kernel main should never return */
 }
 
-void page_init() {
-
-  for (int i = 1; i < 1024; i++) {
-    page_dir[i] = 2; /* No page*/
+void* kmalloc(size_t size) {
+  size = (size + PAGE_SIZE-1) & ~(PAGE_SIZE-1);
+  uint32_t base = kheap;
+  for (uint32_t i = 0; i < size; i += PAGE_SIZE) {
+    uint32_t physm = alloc_page();
+    if (!physm) {
+      printk("kmalloc null page\n");
+      kernel_panic();
+    }
+    map_page(base + i, physm, 3);
   }
+  kheap += size;
+  return (void*)base;
+}
+
+void kfree(void *ptr) {
+  uint32_t base = (uint32_t)ptr;
+  for (uint32_t i = 0; i < (kheap - base); i += PAGE_SIZE) {
+    free_page(virt_to_phys(base + i));
+    unmap_page(base + i);
+  }
+  kheap = base;
+}
+
+uint32_t alloc_kstack() {
+  uint32_t stop = KSTACK_TOP;
+  for (int i = 0; i < (KSTACK_SIZE / PAGE_SIZE); i++) {
+    uint32_t physm = alloc_page();
+    if(!physm) {
+      kernel_panic(); /* KP if no free pages*/
+    }
+    uint32_t virtm = stop - (i+1) * PAGE_SIZE;
+    map_page(virtm, physm, 3);
+  }
+  return stop;
+}
+
+void page_init(uint32_t mbh) {
+  mb_info* mb = (mb_info*)mbh; /* Multiboot header*/
+
+  if (!(mb->flags & (1 << 6))) {
+    printk(" No memory map\n");
+    kernel_panic(); /* Panic if not mmap found */
+  }
+  
+  /* Zero all */
+  memset(page_dir, 0, sizeof(page_dir));
 
   for (int i = 0; i < 1024; i++) {
-    first_page[i] = (i * 0x1000) | 3;
+    first_page_table[i] = (i * 0x1000) | 3;
+  }
+
+  page_tables[0] = (uint32_t*)first_page_table; /* Set the first page*/
+
+  for (int i = 0; i < 1024; i++) {
+    page_tables[0][i] = (i * 0x1000) | 3; /* Set the first page*/
   }
 
   /* Set the first page*/
-  page_dir[0] = ((uint32_t)first_page) | 3;
+  page_dir[0] = ((uint32_t)page_tables[0]) | 3;
 
+  memset(phys_mem_bitmap, 0xFF, sizeof(phys_mem_bitmap)); /* Set all to usable*/
+  reserve_range(&page_dir, sizeof(page_dir)); /* Then reserve the important things*/
+  reserve_range(&first_page_table, sizeof(first_page_table));
+  reserve_range(&page_tables, sizeof(page_tables));
+  reserve_range(phys_mem_bitmap, sizeof(phys_mem_bitmap));
+  reserve_range(mb, sizeof(*mb));
 
-  /* Set the kernel page*/
-  page_dir[KERNEL_VIRT >> 22] = (uint32_t)first_page | PAGE_PRESENT | PAGE_RW;
+  for (uint32_t i = 0; i < mb->mmap_len; i += sizeof(mb_mmap_entry)) {
+    mb_mmap_entry *entry = (mb_mmap_entry*)(mb->mmap_addr + i);
 
-  /* Set the video page*/
-  page_dir[VGA_VIRT >> 22] = (uint32_t)first_page | PAGE_PRESENT | PAGE_RW;
+    if (entry->type == 1) {
+      /* Set all pages */
+      for (uint64_t addr = entry->addr; addr < entry->addr + entry->len; addr += PAGE_SIZE) {
+        uint32_t page = (addr & 0xFFFFFFFF) / PAGE_SIZE;
+        clear_bit(page);
+        free_pages_num++;
+        pages_num++;
+      }
+    }
+  }
+
+  /* Mark the kernel region as used*/
+  uint32_t kernel_end = ((uint32_t)&_kend) / PAGE_SIZE; 
+  for (uint32_t i = 0; i <= kernel_end; i++) {
+    if (i < MAX_PAGES && !test_bit(i)) {
+      set_bit(i);
+      free_pages_num--;
+    }
+  }
+  /* Some how this works I guess*/
+  map_page(VGA_VIRT, 0x00b8000, 3);
+  vmp = (char*)VGA_PHYS; /* Set the vmp to virtual address*/
+ 
+  /* Map the kernel*/
+  uint32_t physm = (uint32_t)&_kstart;
+  uint32_t virtm = KERNEL_VIRT;
+  for (; physm < _kend; physm += PAGE_SIZE, virtm += PAGE_SIZE) { /* Loop through the kernel*/
+    map_page(virtm, physm, 3);
+  }
+
 }
+
+uint32_t alloc_page() {
+  if (free_pages_num == 0) { /* Fast check if free pages available*/
+    printk(" No free pages\n");
+    return 0;
+  }
+
+  /* Search for a free page */
+  for (int i = 0; i < MAX_PAGES; i++) {
+    if (!test_bit(i)) {
+      set_bit(i);
+      free_pages_num--;
+      return i * PAGE_SIZE;
+    }
+  }
+
+  return 0; /* No free pages*/
+}
+
+void free_page(uint32_t addr) {
+  clear_bit(addr / PAGE_SIZE);
+  free_pages_num++;
+}
+
+void map_page(uint32_t virt_addr, uint32_t phys_addr, uint32_t flags) {
+  uint32_t page_dir_var = virt_addr >> 22;
+  uint32_t page_table_var = (virt_addr >> 12) & 0x3FF;
+  if (!(page_dir[page_dir_var] & 1)) {
+    uint32_t pt_phys = alloc_page();
+    if(pt_phys == 0) {
+      printk(" Failed allocate page on map_page\n");
+      dump_pinfo();
+      kernel_panic();
+    }
+
+    memset((void*)pt_phys, 0, PAGE_SIZE);
+
+    page_dir[page_dir_var] = pt_phys | 3;
+    page_tables[page_dir_var] = (uint32_t*)pt_phys;
+  }
+
+  page_tables[page_dir_var][page_table_var] = (phys_addr & 0xFFFFF000) | (flags & 0x0F) | PAGE_PRESENT;
+  asm volatile(
+    "invlpg (%0)" :: "r"(virt_addr)
+  );
+}
+
+void unmap_page(uint32_t virt_addr) {
+  uint32_t page_dir_var = virt_addr >> 22;
+  uint32_t page_table_var = (virt_addr >> 12) & 0x3FF;
+  page_tables[page_dir_var][page_table_var] = 0;
+  asm volatile(
+    "invlpg (%0)" :: "r"(virt_addr)
+  );
+}
+
+void dump_pinfo() {
+  printk(" Free pages: ");
+  puth(free_pages_num);
+  printk(" Total pages: ");
+  puth(pages_num);
+  newline();
+}
+
+/* Use this to reserve important things from page allocator*/
+void reserve_range(void *addr, size_t size) {
+  uint32_t start = (uint32_t)addr / PAGE_SIZE;
+  uint32_t end   = ((uint32_t)addr + size + PAGE_SIZE - 1) / PAGE_SIZE;
+  for (uint32_t i = start; i < end; i++) {
+    if (!test_bit(i)) {
+      set_bit(i);
+      free_pages_num--;
+    }
+  }
+}
+
+uint32_t virt_to_phys(uint32_t virt) {
+  uint32_t pd = virt >> 22;
+  uint32_t pt = (virt >> 12) & 0x3FF;
+  return page_tables[pd][pt] & 0xFFFFF000;
+}
+
 
 
 void printk(char *s) {
@@ -237,7 +388,6 @@ void idt_init() {
   }
 
   /* Set all IRSs that use error code, pretty inefficient and ugly*/
-  set_idt_gate(0x08, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
   for (int i = 0x0A; i < 0x0F; i++) {
     set_idt_gate(i, default_isr_code, GDT_SELECTOR, GATE_INTERRUPT);
   }
@@ -249,9 +399,20 @@ void idt_init() {
     set_idt_gate(i + 0x20, default_irq, GDT_SELECTOR, GATE_INTERRUPT);
   }
 
+  /* Set handlers */
+  set_idt_gate(0x80, syscall_dispatch, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x21, kb_isr, GDT_SELECTOR, 0x8E);
+  /* Exception handlers */
+  set_idt_gate(0x00, dbz_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x04, of_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x06, illop_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x08, df_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x0D, gp_handler, GDT_SELECTOR, 0x8E);
+  set_idt_gate(0x0E, pf_handler, GDT_SELECTOR, 0x8E);
+
   /* Load the IDT */
   asm volatile("lidt %0" : : "m"(idt_ptr) : "memory");
-  printk(" IDT Loaded with base 0x");
+  printk(" IDT Loaded with physical base 0x");
   puth(idt_ptr.base);
   printk(" and limit ");
   putlong(idt_ptr.limit);
@@ -336,4 +497,18 @@ void kernel_panic() {
   printk(" CS: ");
   puth(cs);
   while (1); /* hang */
+}
+
+void stack_trace() {
+   uint32_t addr;
+  uint32_t val;
+  asm volatile("mov %%esp, %0" : "=r"(addr) : ); /* Move initial address*/
+  printk("--STACKTRACE--");
+  for (int i = 0; i < 5; i++) {
+    //asm volatile("mov *(%0), %1" : "=r"(addr), "=r"(val) :);
+    puth(addr);
+    printk(": ");
+    puth(val);
+    newline();
+  }
 }

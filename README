@@ -8,13 +8,30 @@ What is ManuOS?
 ManuOS is a hobby operating system that runs on a x86 PC. It's written in C and uses a small amount of assembly. 
 It uses Lansker-libc(custom written for the OS) as the C library.
 
+Features that currently are implemented:
+
+- Protected mode
+- FAT12 support
+- GDT & IDT
+- Paging(WIP)
+
+TODO:
+
+- Finish paging
+- Add filedescriptors
+- Usermode(ring 3)
+- Task scheduler
+- Printf
+- Add more syscalls
+
 How to use ManuOS?
 ==================
 You need to install grub to a fat12 partitioned disk, copy the kernel and grub.cgf to it and boot it.
 
 The goal?
 =========
-Learn how to write an operating system. And also try getting some actual software working.
+Learn how to write an operating system. And also try getting some actual software working. 
+This OS isn't going to be anything special or complex. Simplicity is the goal.
 
 How to build ManuOS?
 ====================

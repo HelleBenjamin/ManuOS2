@@ -24,6 +24,41 @@ dbz_handler:
   popal
   iretl
 
+# Overflow
+.globl of_handler
+of_handler:
+  pushal
+  pushl $of_msg
+  call prints
+  addl $4, %esp
+  popal
+  iretl
+
+# Illegal opcode
+.globl illop_handler
+illop_handler:
+  pushal
+  pushl $illop_msg
+  call prints
+  addl $4, %esp
+  popal
+  iretl
+
+# Double fault
+.globl df_handler
+df_handler:
+  pushl $df_msg
+  call prints
+  addl $4, %esp
+  jmp kernel_panic
+
+# General protection fault
+.globl gp_handler
+gp_handler:
+  pushl $gp_msg
+  call prints
+  addl $4, %esp
+  jmp kernel_panic
 
 # Page fault handler
 .globl pf_handler
@@ -43,6 +78,15 @@ pf_handler:
   # Panic
   jmp kernel_panic
 
+  iretl
+
+# PIT handler
+.globl pit_handler
+pit_handler:
+  pushl %eax
+  movb $0x20, %al
+  outb %al, $0x20
+  popl %eax
   iretl
 
 # Keyboard handler
@@ -70,6 +114,18 @@ default_irq:
 
 dbz_msg:
   .asciz "Divide by zero\n"
+
+of_msg:
+  .asciz "Overflow\n"
+
+illop_msg:
+  .asciz "Illegal opcode\n"
+
+df_msg:
+  .asciz "Double fault\n"
+
+gp_msg:
+  .asciz "General protection fault\n"
 
 pf_msg:
   .asciz "Page fault\n"
